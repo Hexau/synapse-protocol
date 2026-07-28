@@ -1,0 +1,23 @@
+{
+  "name": "@synapse/protocol",
+  "version": "0.1.0",
+  "description": "Shared TypeScript contract for the a0-connector.v1 protocol — used by synapse-vscode and the Synapse CLI so both clients stay in sync with a single source of truth.",
+  "private": true,
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./",
+    "test": "tsc -p ./ && node --test dist/*.test.js"
+  },
+  "dependencies": {
+    "socket.io-client": "^4.7.5"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "typescript": "^5.3.0"
+  }
+}
