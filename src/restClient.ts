@@ -7,6 +7,23 @@ import {
   ModelPresetsResponse,
   SkillSummary,
   AgentProfileSummary,
+  TokenStatus,
+  UsageSummaryRequest,
+  UsageSummaryResponse,
+  SessionGoalGetResponse,
+  SessionGoalSetResponse,
+  MultiRunStartRequest,
+  MultiRunStartResponse,
+  MultiRunStatusResponse,
+  MultiRunPickRequest,
+  MultiRunPickResponse,
+  DiffWalkthroughResponse,
+  PolicyRememberRequest,
+  PolicyRememberResponse,
+  PolicyRememberedListResponse,
+  PolicyAuditTailResponse,
+  PolicyPendingListResponse,
+  PolicyApproveResponse,
 } from "./types";
 
 export interface SynapseRestClientOptions {
@@ -219,5 +236,94 @@ export class SynapseRestClient {
 
   async logTail(contextId: string, after = 0, limit = 50): Promise<Record<string, unknown>> {
     return this.post("log_tail", { context_id: contextId, after, limit });
+  }
+
+  // --- Fase 1 - A*Usage tracker / Fase 2 - B*Session-goal (HUD data layer) --
+  async getTokenStatus(contextId: string): Promise<TokenStatus> {
+    return this.post("token_status", { context_id: contextId });
+  }
+
+  async getUsageSummary(request: UsageSummaryRequest = {}): Promise<UsageSummaryResponse> {
+    return this.post("usage_summary", request as unknown as Record<string, unknown>);
+  }
+
+  async getSessionGoal(contextId: string): Promise<SessionGoalGetResponse> {
+    return this.post("session_goal_get", { context_id: contextId });
+  }
+
+  async setSessionGoal(
+    contextId: string,
+    objective: string,
+    tokenBudget?: number
+  ): Promise<SessionGoalSetResponse> {
+    return this.post("session_goal_set", {
+      context_id: contextId,
+      objective,
+      ...(tokenBudget !== undefined ? { token_budget: tokenBudget } : {}),
+    });
+  }
+
+  async clearSessionGoal(contextId: string): Promise<Record<string, unknown>> {
+    return this.post("session_goal_clear", { context_id: contextId });
+  }
+
+  async pauseSessionGoal(contextId: string): Promise<SessionGoalSetResponse> {
+    return this.post("session_goal_pause", { context_id: contextId });
+  }
+
+  // Server dispatches the continuation nudge itself (context.communicate())
+  // — see plugins/_a0_connector/api/v1/session_goal_resume.py. The caller
+  // doesn't need to send anything after this resolves.
+  async resumeSessionGoal(contextId: string): Promise<SessionGoalSetResponse> {
+    return this.post("session_goal_resume", { context_id: contextId });
+  }
+
+  // --- Multi-run ----------------------------------------------------------
+  // Fires fan_out() in a background thread server-side and returns
+  // immediately with a run_id — see multi_run_start.py. Poll getMultiRunStatus
+  // until status is no longer "running".
+  async startMultiRun(request: MultiRunStartRequest): Promise<MultiRunStartResponse> {
+    return this.post("multi_run_start", request as unknown as Record<string, unknown>);
+  }
+
+  async getMultiRunStatus(runId: string): Promise<MultiRunStatusResponse> {
+    return this.post("multi_run_status", { run_id: runId });
+  }
+
+  async pickMultiRunWinner(request: MultiRunPickRequest): Promise<MultiRunPickResponse> {
+    return this.post("multi_run_pick", request as unknown as Record<string, unknown>);
+  }
+
+  // --- Diff walkthrough -----------------------------------------------------
+  async getDiffWalkthrough(repoSlug: string, baseRef?: string): Promise<DiffWalkthroughResponse> {
+    return this.post("diff_walkthrough_get", { repo_slug: repoSlug, base_ref: baseRef });
+  }
+
+  // --- Tool policy engine -----------------------------------------------
+  async rememberPolicyDecision(request: PolicyRememberRequest): Promise<PolicyRememberResponse> {
+    return this.post("policy_remember", request as unknown as Record<string, unknown>);
+  }
+
+  async listRememberedPolicyRules(): Promise<PolicyRememberedListResponse> {
+    return this.post("policy_remembered_list");
+  }
+
+  async forgetPolicyDecision(actionId: string): Promise<Record<string, unknown>> {
+    return this.post("policy_forget", { action_id: actionId });
+  }
+
+  async tailPolicyAudit(limit = 50): Promise<PolicyAuditTailResponse> {
+    return this.post("policy_audit_tail", { limit });
+  }
+
+  // Live approval flow — a require_approval rule with no remembered
+  // decision blocks the tool call server-side until one of these resolves
+  // it (or it times out on its own).
+  async listPendingApprovals(): Promise<PolicyPendingListResponse> {
+    return this.post("policy_pending_list");
+  }
+
+  async approvePendingAction(actionId: string, decision: "allow" | "deny"): Promise<PolicyApproveResponse> {
+    return this.post("policy_approve", { action_id: actionId, decision });
   }
 }

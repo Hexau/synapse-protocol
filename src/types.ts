@@ -247,3 +247,207 @@ export interface IndexProjectResponse {
   repo_slug: string;
   path: string;
 }
+
+// --- Fase 1 - A*Usage tracker (token_status.py, usage_summary.py) ----------
+
+/** Live snapshot for one context — token_status.py. Refreshed only inside
+ * prepare_prompt (LLM turns), so may be a live estimate rather than the
+ * provider's exact count between turns. */
+export interface TokenStatus {
+  ok: boolean;
+  context_id: string;
+  token_count: number | null;
+  context_window: number | null;
+}
+
+/** One aggregated row from usage_summary.py — helpers/usage_store.py's
+ * aggregate_usage(), grouped by (day, project, model, call_kind). */
+export interface UsageRow {
+  day: string;
+  project: string;
+  model: string;
+  call_kind: "chat" | "utility";
+  turn_count: number;
+  input_tokens: number;
+  output_tokens: number;
+  cache_read_tokens: number;
+  cache_creation_tokens: number;
+  cost_usd: number;
+  cost_exact: boolean;
+}
+
+export interface UsageSummaryRequest {
+  days?: string[];
+  project?: string;
+}
+export interface UsageSummaryResponse {
+  ok: boolean;
+  rows: UsageRow[];
+}
+
+// --- Fase 2 - B*Session-goal (session_goal_set/get/clear.py) ---------------
+
+export type SessionGoalStatus = "active" | "paused" | "complete" | "blocked" | "budget_limited";
+
+/** helpers/session_goal.py::create_goal / decide_outcome's shape. */
+export interface SessionGoal {
+  id: string;
+  objective: string;
+  status: SessionGoalStatus;
+  token_budget: number | null;
+  turns_used: number;
+  blocked_streak: number;
+  audit_fail_streak: number;
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionGoalGetResponse {
+  ok: boolean;
+  context_id: string;
+  goal: SessionGoal | null;
+}
+export interface SessionGoalSetResponse {
+  ok: boolean;
+  context_id: string;
+  goal: SessionGoal;
+}
+
+// --- Multi-run (multi_run_start/status/pick.py, helpers/multi_run.py) -----
+
+/** One result row from fan_out() — a completed or failed attempt by a
+ * single variant, plus its diffstat against base_ref. */
+export interface MultiRunResultRow {
+  variant: string;
+  path: string;
+  branch: string;
+  response: string | null;
+  error: string | null;
+  files_changed: number;
+  insertions: number;
+  deletions: number;
+  diff_error: string | null;
+}
+
+export interface MultiRunStartRequest {
+  repo_slug: string;
+  task_slug: string;
+  task_prompt: string;
+  variants: string[];
+  agent_profile?: string;
+}
+export interface MultiRunStartResponse {
+  ok: boolean;
+  run_id: string;
+  status: "running";
+  variants: string[];
+}
+
+/** helpers/multi_run_runs.py's registry record — status transitions
+ * running -> done|failed. `result` is only populated once done. */
+export interface MultiRunRecord {
+  run_id: string;
+  task_slug: string;
+  variants: string[];
+  status: "running" | "done" | "failed";
+  result: { task_slug: string; results: MultiRunResultRow[] } | null;
+  error: string | null;
+}
+export interface MultiRunStatusResponse {
+  ok: boolean;
+  run: MultiRunRecord;
+}
+
+export interface MultiRunPickRequest {
+  repo_slug: string;
+  run_id: string;
+  winning_variant: string;
+}
+export interface MultiRunPickResponse {
+  ok: boolean;
+  merged_branch: string;
+  cleanup_errors: string[];
+}
+
+// --- Diff walkthrough (diff_walkthrough_get.py, helpers/diff_walkthrough.py)
+
+export interface DiffHunk {
+  header: string;
+  lines: string[];
+}
+export interface DiffWalkthroughFile {
+  path: string;
+  status: "added" | "modified" | "deleted" | "renamed";
+  hunks: DiffHunk[];
+}
+export interface DiffWalkthroughResponse {
+  ok: boolean;
+  repo_slug: string;
+  base_ref: string;
+  files: DiffWalkthroughFile[];
+}
+
+// --- Tool policy engine (policy_remember/policy_remembered_list/
+// policy_forget/policy_audit_tail.py, helpers/policy_engine.py) -----------
+
+export interface PolicyRememberedRule {
+  action_id: string;
+  decision: "allow" | "deny";
+  tool_name: string;
+  created_at: number;
+}
+export interface PolicyRememberRequest {
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  decision: "allow" | "deny";
+}
+export interface PolicyRememberResponse {
+  ok: boolean;
+  action_id: string;
+  decision: "allow" | "deny";
+  tool_name: string;
+}
+export interface PolicyRememberedListResponse {
+  ok: boolean;
+  rules: PolicyRememberedRule[];
+}
+
+/** One line of helpers/policy_engine.py::audit_log's hash-chained JSONL —
+ * written for every policy decision, allow or deny. */
+export interface PolicyAuditEntry {
+  ts: number;
+  tool_name: string;
+  action_id: string;
+  verdict: "allow" | "deny";
+  rule_name: string | null;
+  reason: string;
+  previous_hash: string | null;
+  entry_hash: string;
+}
+export interface PolicyAuditTailResponse {
+  ok: boolean;
+  entries: PolicyAuditEntry[];
+  chain_valid: boolean;
+}
+
+// --- Live approval flow (policy_pending_list/policy_approve.py,
+// helpers/policy_engine.py::request_approval) -----------------------------
+
+/** A require_approval tool call currently blocked, waiting on
+ * policy_approve — see docs/decisions/2026-08-27-live-approval-flow.md. */
+export interface PolicyPendingApproval {
+  action_id: string;
+  tool_name: string;
+  tool_args: Record<string, unknown>;
+  requested_at: number;
+}
+export interface PolicyPendingListResponse {
+  ok: boolean;
+  pending: PolicyPendingApproval[];
+}
+export interface PolicyApproveResponse {
+  ok: boolean;
+  action_id: string;
+  decision: "allow" | "deny";
+}
